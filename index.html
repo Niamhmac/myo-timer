@@ -31,7 +31,7 @@
                 localStorage.setItem('myoHistory', JSON.stringify(history));
             }, [history]);
 
-            const exercises = [
+             const exercises = [
                 {
                     id: 'test',
                     name: 'Test Timer (1 sec)',
@@ -284,6 +284,21 @@
                                 </div>
                             ))}
                         </div>
+                        <button
+                            onClick={() => {
+                                const dataStr = JSON.stringify(history);
+                                const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+                                const downloadAnchor = document.createElement('a');
+                                downloadAnchor.setAttribute('href', dataUri);
+                                downloadAnchor.setAttribute('download', 'myo-exercise-history.json');
+                                document.body.appendChild(downloadAnchor);
+                                downloadAnchor.click();
+                                document.body.removeChild(downloadAnchor);
+                            }}
+                            className="px-4 py-2 bg-blue-500 text-white rounded mt-4"
+                        >
+                            Download History Data
+                        </button>
                     </div>
                 );
             }
