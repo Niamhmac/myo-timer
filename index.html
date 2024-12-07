@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Myo Timer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100">
+    <div id="root"></div>
+    <script type="text/babel">
+        const App = () => {
+            const [selectedExercise, setSelectedExercise] = React.useState(null);
+            const [isRunning, setIsRunning] = React.useState(false);
+            const [currentCycle, setCurrentCycle] = React.useState(1);
+            const [currentStep, setCurrentStep] = React.useState(0);
+            const [timeLeft, setTimeLeft] = React.useState(0);
+            const [notes, setNotes] = React.useState('');
+            const [history, setHistory] = React.useState(() => {
+                const saved = localStorage.getItem('myoHistory');
+                return saved ? JSON.parse(saved) : [];
+            });
+            const [showingHistory, setShowingHistory] = React.useState(false);
+            const [skipReason, setSkipReason] = React.useState('');
+            const [showSkipModal, setShowSkipModal] = React.useState(false);
+
+            React.useEffect(() => {
+                localStorage.setItem('myoHistory', JSON.stringify(history));
+            }, [history]);
+
+            const exercises = [
+                {
+                    id: 'breathing',
+                    name: 'Breathing Exercises',
+                    cycles: 3,
+                    steps: [
+                        { name: 'INHALE', duration: 6 },
+                        { name: 'HOLD', duration: 6 },
+                        { name: 'EXHALE AND HUM', duration: 8 },
+                        { name: 'TONGUE AND SWALLOW', duration: 10 }
+                    ]
+                },
+                {
+                    id: 'jaw',
+                    name: 'Jaw Breaker',
+                    cycles: 25,
+                    steps: [
+                        { name: 'LEFT', duration: 2 },
+                        { name: 'BREAK', duration: 1 },
+                        { name: 'RIGHT', duration: 2 },
+                        { name: 'BREAK', duration: 1 }
+                    ]
+                }
+            ];
+
+            React.useEffect(() => {
+                let timer;
+                if (isRunning && timeLeft > 0) {
+                    timer = setInterval(() => setTimeLeft(t => t - 1), 1000);
+                } else if (isRunning && timeLeft === 0) {
+                    nextStep();
+                }
+                return () => clearInterval(timer);
+            }, [isRunning, timeLeft]);
+
+            const getPeriod = () => {
+                const now = new Date();
+                return now.getHours() < 14 ? 'morning' : 'evening';
+            };
+
+            const getTodayProgress = () => {
+                const today = new Date().toISOString().split('T')[0];
+                return {
+                    morning: history.some(h => h.date === today && h.period === 'morning' && !h.skipped),
+                    evening: history.some(h => h.date === today && h.period === 'evening' && !h.skipped),
+                    skippedMorning: history.some(h => h.date === today && h.period === 'morning' && h.skipped),
+                    skippedEvening: history.some(h => h.date === today && h.period === 'evening' && h.skipped)
+                };
+            };
+
+            const startExercise = (exercise) => {
+                setSelectedExercise(exercise);
+                setCurrentCycle(1);
+                setCurrentStep(0);
+                setTimeLeft(exercise.steps[0].duration);
+                setNotes('');
+                setIsRunning(false);
+            };
+
+            const nextStep = () => {
+                if (!selectedExercise) return;
+                let nextStep = currentStep + 1;
+                let nextCycle = currentCycle;
+                
+                if (nextStep >= selectedExercise.steps.length) {
+                    nextStep = 0;
+                    nextCycle++;
+                }
+                
+                if (nextCycle > selectedExercise.cycles) {
+                    completeExercise();
+                    return;
+                }
+                
+                setCurrentStep(nextStep);
+                setCurrentCycle(nextCycle);
+                setTimeLeft(selectedExercise.steps[nextStep].duration);
+            };
+
+            const completeExercise = () => {
+                setIsRunning(false);
+                const historyEntry = {
+                    exerciseId: selectedExercise.id,
+                    exerciseName: selectedExercise.name,
+                    timestamp: new Date().toISOString(),
+                    date: new Date().toISOString().split('T')[0],
+                    period: getPeriod(),
+                    notes,
+                    skipped: false
+                };
+                setHistory(prev => [...prev, historyEntry]);
+                setSelectedExercise(null);
+            };
+
+            const skipSession = () => {
+                const historyEntry = {
+                    timestamp: new Date().toISOString(),
+                    date: new Date().toISOString().split('T')[0],
+                    period: getPeriod(),
+                    notes: skipReason,
+                    skipped: true
+                };
+                setHistory(prev => [...prev, historyEntry]);
+                setSkipReason('');
+                setShowSkipModal(false);
+            };
+
+            const formatDate = (isoString) => {
+                const date = new Date(isoString);
+                return date.toLocaleString();
+            };
+
+            const todayProgress = getTodayProgress();
+
+            if (showSkipModal) {
+                return (
+                    <div className="max-w-md mx-auto mt-8 p-4 bg-white rounded-lg shadow">
+                        <h2 className="text-xl font-bold mb-4">Skip Session</h2>
+                        <textarea
+                            value={skipReason}
+                            onChange={(e) => setSkipReason(e.target.value)}
+                            placeholder="Why are you skipping? (Optional)"
+                            className="w-full p-2 border rounded mb-4"
+                            rows="3"
+                        />
+                        <div className="flex justify-end space-x-2">
+                            <button 
+                                onClick={() => setShowSkipModal(false)}
+                                className="px-4 py-2 bg-gray-200 rounded"
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                onClick={skipSession}
+                                className="px-4 py-2 bg-blue-500 text-white rounded"
+                            >
+                                Confirm Skip
+                            </button>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (showingHistory) {
+                const groupedHistory = history.reduce((acc, entry) => {
+                    const date = entry.date;
+                    if (!acc[date]) acc[date] = [];
+                    acc[date].push(entry);
+                    return acc;
+                }, {});
+
+                return (
+                    <div className="max-w-md mx-auto mt-8 p-4 bg-white rounded-lg shadow">
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-xl font-bold">Exercise History</h2>
+                            <button 
+                                onClick={() => setShowingHistory(false)}
+                                className="px-4 py-2 bg-gray-200 rounded"
+                            >
+                                Back
+                            </button>
+                        </div>
+                        <div className="space-y-6">
+                            {Object.entries(groupedHistory).reverse().map(([date, entries]) => (
+                                <div key={date} className="border-b pb-4">
+                                    <h3 className="font-bold mb-2">{new Date(date).toLocaleDateString()}</h3>
+                                    {entries.map((entry, idx) => (
+                                        <div key={idx} className="ml-4 mb-2">
+                                            <div className="flex items-center">
+                                                <span className="font-medium">{entry.period}</span>
+                                                {entry.skipped ? (
+                                                    <span className="ml-2 px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded-full text-sm">
+                                                        Skipped
+                                                    </span>
+                                                ) : (
+                                                    <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-800 rounded-full text-sm">
+                                                        Completed
+                                                    </span>
+                                                )}
+                                            </div>
+                                            {entry.exerciseName && (
+                                                <div className="text-gray-600">{entry.exerciseName}</div>
+                                            )}
+                                            {entry.notes && (
+                                                <div className="text-gray-500 text-sm mt-1">
+                                                    Note: {entry.notes}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                );
+            }
+
+            if (!selectedExercise) {
+                return (
+                    <div className="max-w-md mx-auto mt-8 p-4 bg-white rounded-lg shadow">
+                        <h1 className="text-xl font-bold mb-4">Myo Exercises</h1>
+                        
+                        <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+                            <h2 className="font-bold mb-2">Today's Progress</h2>
+                            <div className="space-y-2">
+                                <div className="flex items-center">
+                                    <span className="w-20">Morning:</span>
+                                    {todayProgress.morning ? (
+                                        <span className="text-green-600">✓ Done</span>
+                                    ) : todayProgress.skippedMorning ? (
+                                        <span className="text-yellow-600">Skipped</span>
+                                    ) : (
+                                        <span className="text-gray-400">Not done</span>
+                                    )}
+                                </div>
+                                <div className="flex items-center">
+                                    <span className="w-20">Evening:</span>
+                                    {todayProgress.evening ? (
+                                        <span className="text-green-600">✓ Done</span>
+                                    ) : todayProgress.skippedEvening ? (
+                                        <span className="text-yellow-600">Skipped</span>
+                                    ) : (
+                                        <span className="text-gray-400">Not done</span>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            {exercises.map(exercise => (
+                                <button
+                                    key={exercise.id}
+                                    onClick={() => startExercise(exercise)}
+                                    className="w-full p-3 text-left bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+                                >
+                                    {exercise.name}
+                                </button>
+                            ))}
+                            
+                            <button
+                                onClick={() => setShowSkipModal(true)}
+                                className="w-full p-3 text-left bg-gray-200 rounded-lg hover:bg-gray-300"
+                            >
+                                Skip this session
+                            </button>
+
+                            {history.length > 0 && (
+                                <button
+                                    onClick={() => setShowingHistory(true)}
+                                    className="w-full p-3 text-left bg-gray-200 rounded-lg hover:bg-gray-300"
+                                >
+                                    View History ({history.length} sessions)
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="max-w-md mx-auto mt-8 p-4 bg-white rounded-lg shadow">
+                    <div className="flex justify-between items-center mb-4">
+                        <button 
+                            onClick={() => setSelectedExercise(null)}
+                            className="px-4 py-2 bg-gray-200 rounded"
+                        >
+                            Back
+                        </button>
+                        <h2 className="text-xl font-bold">{selectedExercise.name}</h2>
+                        <div style={{width: '80px'}}></div>
+                    </div>
+                    
+                    <div className="text-center space-y-4">
+                        <div className="text-6xl font-bold">
+                            {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, '0')}
+                        </div>
+                        <div className="text-2xl">
+                            {selectedExercise.steps[currentStep].name}
+                        </div>
+                        <div className="text-gray-500">
+                            Cycle {currentCycle}/{selectedExercise.cycles}
+                        </div>
+                        
+                        <div className="flex justify-center space-x-4">
+                            <button
+                                onClick={() => setIsRunning(!isRunning)}
+                                className="px-8 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-lg"
+                            >
+                                {isRunning ? 'Pause' : 'Start'}
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setCurrentCycle(1);
+                                    setCurrentStep(0);
+                                    setTimeLeft(selectedExercise.steps[0].duration);
+                                    setIsRunning(false);
+                                }}
+                                className="px-8 py-3 bg-gray-200 rounded-lg hover:bg-gray-300 text-lg"
+                            >
+                                Reset
+                            </button>
+                        </div>
+
+                        <textarea
+                            placeholder="Add notes about this session..."
+                            value={notes}
+                            onChange={(e) => setNotes(e.target.value)}
+                            className="w-full p-3 border rounded-lg"
+                            rows="3"
+                        />
+                    </div>
+                </div>
+            );
+        };
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
